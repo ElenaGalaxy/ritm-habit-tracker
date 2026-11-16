@@ -1,0 +1,29 @@
+# Бесплатный демо-стенд на Render.
+# Файловая система у free-сервиса эфемерная: SQLite-база сбрасывается
+# при рестарте и каждом деплое. Для реальных данных нужен платный план,
+# persistent disk и DATABASE_PATH=/var/data/tracker.db.
+services:
+  - type: web
+    runtime: python
+    name: ritm-habit-tracker
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 wsgi:app"
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOW_DEMO_LOGIN
+        value: "true"
+      - key: SEED_DEMO
+        value: "true"
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      # Опционально добавьте в Render Dashboard:
+      # TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET,
+      # AI_API_KEY, AI_BASE_URL, AI_MODEL.

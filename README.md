@@ -54,6 +54,40 @@ python app.py
 > Для публичного деплоя отключите демо-доступ (`ALLOW_DEMO_LOGIN=false`,
 > `SEED_DEMO=false`), удалите демо-базу и задайте собственный `SECRET_KEY`.
 
+### Деплой на Render (демо)
+
+В репозитории есть `render.yaml` для бесплатного демо-стенда:
+
+1. В [Render Dashboard](https://dashboard.render.com) выберите
+   **New → Blueprint** и подключите GitHub-репозиторий
+   `ElenaGalaxy/ritm-habit-tracker`.
+2. Render создаст web service `ritm-habit-tracker` на Python 3.12,
+   установит зависимости и запустит `gunicorn ... wsgi:app`.
+3. После деплоя откройте выданный `onrender.com`-URL и войдите в демо-кабинет.
+
+Free-план использует эфемерную файловую систему: база SQLite сбрасывается
+при рестарте и каждом деплое, а сам сервис засыпает после простоя — в это
+время планировщик напоминаний не работает. Это нормально для демо, но не
+для реальных данных.
+
+Для постоянного хранения перейдите на платный план, добавьте persistent disk
+с mount path `/var/data` и задайте:
+
+```text
+DATABASE_PATH=/var/data/tracker.db
+ALLOW_DEMO_LOGIN=false
+SEED_DEMO=false
+SESSION_COOKIE_SECURE=true
+```
+
+Telegram и AI подключаются через Environment Variables в Render:
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`,
+`AI_API_KEY`. После деплоя зарегистрируйте вебхук:
+
+```text
+https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<service>.onrender.com/telegram/webhook/<SECRET>
+```
+
 ---
 
 ## Переменные окружения
@@ -234,7 +268,10 @@ python -m unittest discover -s tests -v
 ## Структура проекта
 
 ```
-app.py                     точка входа + планировщик
+app.py                     локальная точка входа + планировщик
+wsgi.py                    production-вход для Gunicorn + планировщик
+render.yaml                Blueprint для демо-стенда Render
+.python-version            версия Python для Render
 schema.sql                 схема SQLite
 seed.json                  демо-данные (артефакт)
 openapi.yaml               OpenAPI 3.0
