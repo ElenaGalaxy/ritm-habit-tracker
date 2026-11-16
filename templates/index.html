@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F0FEFF">
+  <meta name="description" content="Ритм — спокойный трекер привычек с календарём, заморозками и AI-ассистентом.">
+  <title>Ритм — трекер привычек</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#view">Перейти к содержимому</a>
+  <div id="app" class="app-root" aria-busy="true">
+    <div class="boot-screen">
+      <div class="boot-mark">ритм<span>.</span></div>
+      <div class="boot-dots" aria-label="Загрузка"><i></i><i></i><i></i></div>
+    </div>
+  </div>
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+  <div id="modal-root"></div>
+  <noscript>
+    <div class="noscript">Для работы трекера включите JavaScript.</div>
+  </noscript>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,2026 @@
+openapi: 3.0.3
+info:
+  title: Ритм — API трекера привычек
+  version: 1.0.0
+  description: |
+    API MVP «Трекер привычек + AI-ассистент».
+
+    - Аутентификация — cookie `ht_session` (HttpOnly, SameSite=Lax).
+    - Все изменяющие запросы проверяют заголовок `Origin`/`Referer`.
+    - Ошибки возвращаются в формате `{ "error": "...", "code": "..." }`.
+    - Даты — локальные календарные даты пользователя в формате `YYYY-MM-DD`.
+    - Служебные метки времени — UTC ISO-8601.
+  contact:
+    name: Ритм MVP
+servers:
+  - url: http://127.0.0.1:5000
+    description: Локальный сервер разработки
+
+tags:
+  - name: auth
+    description: Регистрация, вход, сессии
+  - name: habits
+    description: Привычки и шаблоны
+  - name: logs
+    description: Отметки, заморозки, календарь, события
+  - name: stats
+    description: Статистика и тепловая карта
+  - name: ai
+    description: AI-ассистент
+  - name: settings
+    description: Настройки, Telegram, напоминания, аккаунт
+  - name: export
+    description: Экспорт данных
+  - name: docs
+    description: Документация
+  - name: admin
+    description: Администрирование
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ht_session
+
+  parameters:
+    HabitId:
+      name: habitId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    Date:
+      name: date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+
+  responses:
+    Unauthorized:
+      description: Требуется вход
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Требуется вход
+            code: unauthorized
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Объект не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Не найдено
+            code: not_found
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Заполните поле «название»
+            code: validation_error
+            details:
+              title: required
+    Conflict:
+      description: Конфликт бизнес-правила
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Csrf:
+      description: Запрос отклонён проверкой Origin
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Запрос отклонён (origin)
+            code: csrf
+    RateLimit:
+      description: Слишком много запросов
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+          additionalProperties:
+            type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, admin]
+        timezone:
+          type: string
+        goal:
+          type: string
+        quiet_hours_start:
+          type: string
+          example: "22:00"
+        quiet_hours_end:
+          type: string
+          example: "08:00"
+        reminder_channel:
+          type: string
+          enum: [telegram, none]
+        ai_enabled:
+          type: boolean
+        ai_consent:
+          type: boolean
+        theme:
+          type: string
+          enum: [light, dark]
+        onboarded_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        conditions_enabled:
+          type: object
+          additionalProperties:
+            type: boolean
+        telegram_connected:
+          type: boolean
+        telegram_id:
+          type: string
+          nullable: true
+        telegram_connected_at:
+          type: string
+          nullable: true
+
+    Habit:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+          example: "#C9623E"
+        type:
+          type: string
+          enum: [boolean, quantity, duration]
+        target_value:
+          type: number
+        unit:
+          type: string
+        schedule:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        times_per_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+        reminder_time:
+          type: string
+          example: "09:00"
+        status:
+          type: string
+          enum: [active, paused, completed, archived]
+        freeze_limit:
+          type: integer
+          minimum: 0
+          maximum: 5
+        start_date:
+          type: string
+          format: date
+        sort_order:
+          type: integer
+        current_streak:
+          type: integer
+        best_streak:
+          type: integer
+        streak_unit:
+          type: string
+          enum: [days, weeks]
+        freezes_used:
+          type: integer
+        freezes_left:
+          type: integer
+        today_status:
+          type: string
+          enum: [done, partial, skipped, frozen, missed, empty]
+        today_value:
+          type: number
+        week:
+          type: object
+        month:
+          type: object
+
+    HabitPayload:
+      type: object
+      required: [title, type, target_value, schedule]
+      properties:
+        title:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 300
+        icon:
+          type: string
+          maxLength: 32
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+        type:
+          type: string
+          enum: [boolean, quantity, duration]
+        target_value:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 100000
+        unit:
+          type: string
+          maxLength: 20
+          enum: ["", "раз", "минуты", "страницы", "стаканы", "шаги", "кг", "км"]
+        schedule:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        times_per_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+        reminder_time:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        freeze_limit:
+          type: integer
+          minimum: 0
+          maximum: 5
+        status:
+          type: string
+          enum: [active, paused, completed, archived]
+        sort_order:
+          type: integer
+
+    Log:
+      type: object
+      properties:
+        id:
+          type: integer
+        habit_id:
+          type: integer
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+        status:
+          type: string
+          enum: [done, partial, skipped, missed, frozen]
+        note:
+          type: string
+        type:
+          type: string
+        target_value:
+          type: number
+        unit:
+          type: string
+
+    LogPayload:
+      type: object
+      required: [habit_id, date]
+      properties:
+        habit_id:
+          type: integer
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          nullable: true
+          enum: [done, partial, skipped, frozen, null]
+        note:
+          type: string
+          maxLength: 500
+
+    DayEntry:
+      type: object
+      properties:
+        habit_id:
+          type: integer
+        title:
+          type: string
+        color:
+          type: string
+        icon:
+          type: string
+        type:
+          type: string
+        target_value:
+          type: number
+        unit:
+          type: string
+        schedule_label:
+          type: string
+        status:
+          type: string
+          enum: [done, partial, skipped, frozen, missed, empty]
+        value:
+          type: number
+        note:
+          type: string
+        log_id:
+          type: integer
+          nullable: true
+
+    CalendarDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        day:
+          type: integer
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+        status:
+          type: string
+        done:
+          type: integer
+        total:
+          type: integer
+        future:
+          type: boolean
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayEntry'
+
+    ConditionEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [streak_badge, missed_reminder, low_week]
+        event_key:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        created_at:
+          type: string
+        seen_at:
+          type: string
+          nullable: true
+
+    AiHabit:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [boolean, quantity, duration]
+        target_value:
+          type: number
+        unit:
+          type: string
+        schedule:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        times_per_week:
+          type: integer
+        micro_step:
+          type: string
+        trigger:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+
+    AiPlan:
+      type: object
+      properties:
+        habits:
+          type: array
+          minItems: 3
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AiHabit'
+        summary:
+          type: string
+        fallback:
+          type: boolean
+
+    AiReview:
+      type: object
+      properties:
+        wins:
+          type: array
+          items:
+            type: string
+        gaps:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                properties:
+                  text:
+                    type: string
+                  habit_title:
+                    type: string
+                    nullable: true
+                  suggested_target:
+                    type: number
+                    nullable: true
+        summary:
+          type: string
+        fallback:
+          type: boolean
+
+security:
+  - cookieAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [docs]
+      summary: Проверка доступности сервера
+      security: []
+      responses:
+        '200':
+          description: Сервер и база доступны
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  time:
+                    type: string
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  maxLength: 80
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 200
+                timezone:
+                  type: string
+                  example: Europe/Moscow
+      responses:
+        '201':
+          description: Пользователь создан, сессия установлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  onboarding_needed:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Вход по email и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Сессия установлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  onboarding_needed:
+                    type: boolean
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+
+  /auth/demo:
+    post:
+      tags: [auth]
+      summary: Вход в демо-кабинет
+      security: []
+      responses:
+        '200':
+          description: Демо-сессия установлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  onboarding_needed:
+                    type: boolean
+                  demo:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Выход и удаление сессии
+      responses:
+        '200':
+          description: Сессия завершена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Текущий пользователь
+      security: []
+      responses:
+        '200':
+          description: Профиль или null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    allOf:
+                      - $ref: '#/components/schemas/User'
+                    nullable: true
+                  onboarding_needed:
+                    type: boolean
+
+  /auth/onboarding:
+    post:
+      tags: [auth]
+      summary: Завершение первичной настройки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 80
+                timezone:
+                  type: string
+                goal:
+                  type: string
+                  maxLength: 500
+                reminder_channel:
+                  type: string
+                  enum: [telegram, none]
+      responses:
+        '200':
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  onboarding_needed:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /today:
+    get:
+      tags: [logs]
+      summary: Экран «Сегодня»
+      responses:
+        '200':
+          description: Привычки на сегодня и сводка
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  weekday:
+                    type: integer
+                  name:
+                    type: string
+                  goal:
+                    type: string
+                  habits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      done:
+                        type: integer
+                      partial:
+                        type: integer
+                      remaining:
+                        type: integer
+                      percent:
+                        type: integer
+                      freezes_left:
+                        type: integer
+                      best_current_streak:
+                        type: integer
+                  tip:
+                    type: string
+                  unseen_events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConditionEvent'
+                  next_reminder:
+                    type: string
+                    nullable: true
+                  telegram_connected:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /habits:
+    get:
+      tags: [habits]
+      summary: Список привычек
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, completed, archived, all]
+            default: active
+        - name: include_deleted
+          in: query
+          schema:
+            type: string
+            enum: ['0', '1']
+      responses:
+        '200':
+          description: Привычки пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+                  active_count:
+                    type: integer
+                  active_limit:
+                    type: integer
+                    example: 30
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [habits]
+      summary: Создать привычку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitPayload'
+      responses:
+        '201':
+          description: Привычка создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Достигнут лимит 30 активных привычек
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: В MVP можно вести не более 30 активных привычек.
+                code: active_limit
+
+  /habits/batch:
+    post:
+      tags: [habits]
+      summary: Создать 1–6 привычек пакетно (например, из AI-плана)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [habits]
+              properties:
+                habits:
+                  type: array
+                  minItems: 1
+                  maxItems: 6
+                  items:
+                    $ref: '#/components/schemas/HabitPayload'
+      responses:
+        '201':
+          description: Привычки созданы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+                  created:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /habits/{habitId}:
+    get:
+      tags: [habits]
+      summary: Одна привычка
+      parameters:
+        - $ref: '#/components/parameters/HabitId'
+      responses:
+        '200':
+          description: Привычка
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [habits]
+      summary: Изменить привычку
+      parameters:
+        - $ref: '#/components/parameters/HabitId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitPayload'
+      responses:
+        '200':
+          description: Привычка обновлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [habits]
+      summary: Удалить привычку (soft delete с Undo 10 секунд)
+      parameters:
+        - $ref: '#/components/parameters/HabitId'
+        - name: permanent
+          in: query
+          schema:
+            type: string
+            enum: ['0', '1']
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [archive]
+      responses:
+        '200':
+          description: Привычка удалена или архивирована
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted:
+                    type: boolean
+                  archived:
+                    type: boolean
+                  permanent:
+                    type: boolean
+                  habit_id:
+                    type: integer
+                  undo_seconds:
+                    type: integer
+                    example: 10
+                  message:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /habits/{habitId}/restore:
+    post:
+      tags: [habits]
+      summary: Восстановить удалённую привычку (Undo)
+      parameters:
+        - $ref: '#/components/parameters/HabitId'
+      responses:
+        '200':
+          description: Привычка восстановлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /templates:
+    get:
+      tags: [habits]
+      summary: Активные шаблоны привычек
+      responses:
+        '200':
+          description: Список шаблонов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+
+  /logs:
+    get:
+      tags: [logs]
+      summary: Отметки за период
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: habit_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Отметки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Log'
+                  from:
+                    type: string
+                    format: date
+                  to:
+                    type: string
+                    format: date
+        '400':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags: [logs]
+      summary: Сохранить отметку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogPayload'
+      responses:
+        '200':
+          description: Отметка сохранена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log:
+                    $ref: '#/components/schemas/Log'
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConditionEvent'
+                  freezes_left:
+                    type: integer
+                  removed:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Закончились заморозки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [logs]
+      summary: Удалить отметку
+      parameters:
+        - name: habit_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Отметка удалена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed:
+                    type: boolean
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+                  freezes_left:
+                    type: integer
+
+  /logs/freeze:
+    post:
+      tags: [logs]
+      summary: Поставить заморозку («Пауза»)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [habit_id]
+              properties:
+                habit_id:
+                  type: integer
+                date:
+                  type: string
+                  format: date
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Заморозка поставлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  log:
+                    $ref: '#/components/schemas/Log'
+                  habit:
+                    $ref: '#/components/schemas/Habit'
+                  freezes_left:
+                    type: integer
+        '409':
+          description: Лимит заморозок в этом месяце исчерпан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Заморозки на этот месяц закончились (2 из 2).
+                code: freeze_limit
+    delete:
+      tags: [logs]
+      summary: Снять заморозку
+      parameters:
+        - name: habit_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Заморозка снята
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  removed:
+                    type: boolean
+
+  /calendar:
+    get:
+      tags: [logs]
+      summary: Календарь на месяц или год
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}$'
+            example: '2026-11'
+        - name: year
+          in: query
+          schema:
+            type: integer
+            example: 2026
+      responses:
+        '200':
+          description: Данные календаря
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum: [month, year]
+                  year:
+                    type: integer
+                  month:
+                    type: integer
+                  first_weekday:
+                    type: integer
+                  today:
+                    type: string
+                    format: date
+                  days:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CalendarDay'
+                  habits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+                  freezes:
+                    type: object
+                  summary:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /calendar/day:
+    get:
+      tags: [logs]
+      summary: Отметки конкретного дня для редактора
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: День и его отметки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  weekday:
+                    type: string
+                  future:
+                    type: boolean
+                  editable:
+                    type: boolean
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DayEntry'
+                  freezes:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /events:
+    get:
+      tags: [logs]
+      summary: События условий
+      parameters:
+        - name: unseen
+          in: query
+          schema:
+            type: string
+            enum: ['0', '1']
+      responses:
+        '200':
+          description: Список событий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConditionEvent'
+
+  /events/seen:
+    post:
+      tags: [logs]
+      summary: Отметить события просмотренными
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: События обновлены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  updated:
+                    type: integer
+
+  /conditions:
+    get:
+      tags: [logs]
+      summary: Настройки и события условий
+      responses:
+        '200':
+          description: Условия и журнал событий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConditionEvent'
+                  unseen_count:
+                    type: integer
+    patch:
+      tags: [logs]
+      summary: Включить или отключить условия
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                streak_badge:
+                  type: boolean
+                missed_reminder:
+                  type: boolean
+                low_week:
+                  type: boolean
+      responses:
+        '200':
+          description: Настройки условий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+
+  /stats:
+    get:
+      tags: [stats]
+      summary: Статистика за период
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            enum: [7, 30, 90, 365]
+            default: 30
+      responses:
+        '200':
+          description: Сводка, привычки и дневной ряд
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today:
+                    type: string
+                    format: date
+                  period:
+                    type: object
+                  overview:
+                    type: object
+                  habits:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Habit'
+                  series:
+                    type: array
+                    items:
+                      type: object
+
+  /stats/heatmap:
+    get:
+      tags: [stats]
+      summary: Годовая тепловая карта
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+            default: 2026
+      responses:
+        '200':
+          description: Дни года с интенсивностью
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  days:
+                    type: array
+                    items:
+                      type: object
+                  summary:
+                    type: object
+
+  /stats/habit/{habitId}:
+    get:
+      tags: [stats]
+      summary: Детальная статистика привычки
+      parameters:
+        - $ref: '#/components/parameters/HabitId'
+      responses:
+        '200':
+          description: Серии, выполнение и история
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ai/status:
+    get:
+      tags: [ai]
+      summary: Доступность AI и лимит запросов
+      responses:
+        '200':
+          description: Статус AI
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  consent:
+                    type: boolean
+                  provider_ready:
+                    type: boolean
+                  requests_today:
+                    type: integer
+                  limit:
+                    type: integer
+                    example: 10
+                  remaining:
+                    type: integer
+                  model:
+                    type: string
+                    nullable: true
+
+  /ai/generate:
+    post:
+      tags: [ai]
+      summary: Сгенерировать 3–5 привычек под цель
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                goal:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+      responses:
+        '200':
+          description: План привычек (fallback без ключа)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    $ref: '#/components/schemas/AiPlan'
+                  goal:
+                    type: string
+                  provider:
+                    type: string
+                  fallback:
+                    type: boolean
+                  status:
+                    type: string
+                  requests_today:
+                    type: integer
+                  remaining:
+                    type: integer
+        '409':
+          description: AI отключён или нет согласия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                disabled:
+                  value:
+                    error: AI-рекомендации отключены в настройках
+                    code: ai_disabled
+                consent:
+                  value:
+                    error: Нужно согласие на отправку обезличенных данных AI.
+                    code: consent_required
+        '429':
+          description: Лимит 10 запросов в день
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Лимит 10 AI-запросов в день исчерпан.
+                code: ai_rate_limit
+
+  /ai/review:
+    post:
+      tags: [ai]
+      summary: Недельный обзор
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Обзор и данные по привычкам
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  review:
+                    $ref: '#/components/schemas/AiReview'
+                  period:
+                    type: object
+                  habits:
+                    type: array
+                    items:
+                      type: object
+                  provider:
+                    type: string
+                  fallback:
+                    type: boolean
+                  remaining:
+                    type: integer
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+
+  /ai/history:
+    get:
+      tags: [ai]
+      summary: История AI-запросов
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Запросы пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      type: object
+
+  /settings:
+    patch:
+      tags: [settings]
+      summary: Обновить настройки профиля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 80
+                timezone:
+                  type: string
+                goal:
+                  type: string
+                  maxLength: 500
+                quiet_hours_start:
+                  type: string
+                  pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                quiet_hours_end:
+                  type: string
+                  pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                reminder_channel:
+                  type: string
+                  enum: [telegram, none]
+                ai_enabled:
+                  type: boolean
+                ai_consent:
+                  type: boolean
+                theme:
+                  type: string
+                  enum: [light, dark]
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /telegram/connect:
+    post:
+      tags: [settings]
+      summary: Получить код подключения Telegram
+      responses:
+        '200':
+          description: Код и инструкция (или демо-режим)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum: [bot, demo]
+                  code:
+                    type: string
+                  bot_username:
+                    type: string
+                    nullable: true
+                  deep_link:
+                    type: string
+                    nullable: true
+                  instruction:
+                    type: string
+
+  /telegram/simulate-connect:
+    post:
+      tags: [settings]
+      summary: Подключить Telegram в демо-режиме
+      responses:
+        '200':
+          description: Демо-подключение выполнено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  connected:
+                    type: boolean
+                  mode:
+                    type: string
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /telegram/disconnect:
+    post:
+      tags: [settings]
+      summary: Отключить Telegram
+      responses:
+        '200':
+          description: Telegram отключён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  connected:
+                    type: boolean
+
+  /telegram/webhook/{secret}:
+    post:
+      tags: [settings]
+      summary: Вебхук Telegram-бота
+      security: []
+      parameters:
+        - name: secret
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Обновление обработано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /reminders:
+    get:
+      tags: [settings]
+      summary: Журнал напоминаний и уведомлений
+      responses:
+        '200':
+          description: Напоминания пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today:
+                    type: string
+                    format: date
+                  channel:
+                    type: string
+                  telegram_connected:
+                    type: boolean
+                  quiet_hours:
+                    type: array
+                    items:
+                      type: string
+                  sends:
+                    type: array
+                    items:
+                      type: object
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+
+  /reminders/snooze:
+    post:
+      tags: [settings]
+      summary: Отложить напоминание на 1 час
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [habit_id]
+              properties:
+                habit_id:
+                  type: integer
+      responses:
+        '200':
+          description: Напоминание отложено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  due_at:
+                    type: string
+                  habit_title:
+                    type: string
+                  message:
+                    type: string
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /reminders/tick:
+    post:
+      tags: [settings]
+      summary: Запустить обработку напоминаний вручную (только admin)
+      responses:
+        '200':
+          description: Результат обработки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /account:
+    delete:
+      tags: [settings]
+      summary: Удалить аккаунт и все данные
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: string
+                  example: УДАЛИТЬ
+      responses:
+        '200':
+          description: Аккаунт удалён, сессия очищена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /export.csv:
+    get:
+      tags: [export]
+      summary: Экспорт отметок в CSV
+      responses:
+        '200':
+          description: CSV-файл
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /export.json:
+    get:
+      tags: [export]
+      summary: Экспорт всех данных в JSON
+      responses:
+        '200':
+          description: JSON-файл
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /export/report.pdf:
+    get:
+      tags: [export]
+      summary: PDF-отчёт по привычкам
+      responses:
+        '200':
+          description: PDF-файл
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /docs/tz.md:
+    get:
+      tags: [docs]
+      summary: Техническое задание в Markdown
+      security: []
+      parameters:
+        - name: inline
+          in: query
+          schema:
+            type: string
+            enum: ['0', '1']
+      responses:
+        '200':
+          description: Markdown-файл
+          content:
+            text/markdown:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /docs/tz.pdf:
+    get:
+      tags: [docs]
+      summary: Техническое задание в PDF
+      security: []
+      parameters:
+        - name: inline
+          in: query
+          schema:
+            type: string
+            enum: ['0', '1']
+      responses:
+        '200':
+          description: PDF-файл
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /docs/file/{name}:
+    get:
+      tags: [docs]
+      summary: Скачать обязательный артефакт проекта
+      security: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [schema.sql, seed.json, README.md]
+      responses:
+        '200':
+          description: Файл документации
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /openapi.yaml:
+    get:
+      tags: [docs]
+      summary: Эта спецификация OpenAPI
+      security: []
+      responses:
+        '200':
+          description: YAML-файл
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /admin/overview:
+    get:
+      tags: [admin]
+      summary: Сводка администратора
+      responses:
+        '200':
+          description: Счётчики, пользователи, шаблоны и ошибки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  counts:
+                    type: object
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  templates:
+                    type: array
+                    items:
+                      type: object
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                  bot_configured:
+                    type: boolean
+                  ai_configured:
+                    type: boolean
+                  docs_public:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/errors:
+    get:
+      tags: [admin]
+      summary: Журнал ошибок
+      responses:
+        '200':
+          description: Последние ошибки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/templates/{templateId}:
+    patch:
+      tags: [admin]
+      summary: Изменить шаблон привычки
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_active:
+                  type: boolean
+                title:
+                  type: string
+                  maxLength: 80
+      responses:
+        '200':
+          description: Шаблон обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  template:
+                    type: object
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

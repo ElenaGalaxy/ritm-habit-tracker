@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Окружение и секреты
+.env
+.env.*
+!.env.example
+
+# Локальные рабочие файлы и референсы
+Stil.png
+Qwen_markdown_*.md
+
+# База данных и файлы во время работы
+instance/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

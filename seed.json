@@ -1,0 +1,147 @@
+{
+  "$schema": "./schema.sql",
+  "version": 1,
+  "description": "Безопасные демо-данные MVP «Ритм». Этот файл дублирует набор, который создаёт tracker/seed.py при первом запуске пустой базы.",
+  "timezone": "Europe/Moscow",
+  "demo_user": {
+    "name": "Саша",
+    "email": "demo@treker.local",
+    "password": "demo1234",
+    "role": "user",
+    "goal": "Вести блог 5 раз в неделю и не выгорать",
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "08:00",
+    "reminder_channel": "telegram",
+    "ai_enabled": true,
+    "ai_consent": false,
+    "theme": "light",
+    "conditions_enabled": {
+      "streak_badge": true,
+      "missed_reminder": true,
+      "low_week": true
+    }
+  },
+  "admin_user": {
+    "name": "Админ",
+    "email": "admin@treker.local",
+    "password": "admin1234",
+    "role": "admin",
+    "goal": "Поддержка сервиса",
+    "reminder_channel": "none"
+  },
+  "templates": [
+    {
+      "title": "Stories до 12:00",
+      "description": "Один короткий кадр, чтобы блог оставался живым",
+      "icon": "camera",
+      "color": "#2E685F",
+      "type": "boolean",
+      "target_value": 1,
+      "unit": "",
+      "schedule": "daily",
+      "times_per_week": 7,
+      "is_active": true
+    },
+    {
+      "title": "Сценарий Reels 20 минут",
+      "description": "Спокойная работа над следующим роликом",
+      "icon": "pen",
+      "color": "#4F7D70",
+      "type": "duration",
+      "target_value": 20,
+      "unit": "минута",
+      "schedule": "times_per_week",
+      "times_per_week": 5,
+      "is_active": true
+    },
+    {
+      "title": "Прогулка 30 минут",
+      "description": "Пауза от экрана и свежая голова",
+      "icon": "walk",
+      "color": "#AD8557",
+      "type": "duration",
+      "target_value": 30,
+      "unit": "минута",
+      "schedule": "daily",
+      "times_per_week": 7,
+      "is_active": true
+    },
+    {
+      "title": "Вода 6 стаканов",
+      "description": "Базовая забота о себе в течение дня",
+      "icon": "water",
+      "color": "#5E8794",
+      "type": "quantity",
+      "target_value": 6,
+      "unit": "стакан",
+      "schedule": "daily",
+      "times_per_week": 7,
+      "is_active": true
+    },
+    {
+      "title": "Без телефона после 23:00",
+      "description": "Спокойное завершение дня без ленты",
+      "icon": "moon",
+      "color": "#7D6F7A",
+      "type": "boolean",
+      "target_value": 1,
+      "unit": "",
+      "schedule": "daily",
+      "times_per_week": 7,
+      "is_active": true
+    }
+  ],
+  "demo_habits": [
+    {
+      "template": "Stories до 12:00",
+      "reminder_time": "09:30",
+      "freeze_limit": 2
+    },
+    {
+      "template": "Сценарий Reels 20 минут",
+      "reminder_time": "14:00",
+      "freeze_limit": 2
+    },
+    {
+      "template": "Прогулка 30 минут",
+      "reminder_time": "18:00",
+      "freeze_limit": 2
+    },
+    {
+      "template": "Вода 6 стаканов",
+      "reminder_time": "11:00",
+      "freeze_limit": 2
+    },
+    {
+      "template": "Без телефона после 23:00",
+      "reminder_time": "22:30",
+      "freeze_limit": 2
+    }
+  ],
+  "demo_history": {
+    "days": 75,
+    "random_seed": 42,
+    "freeze_examples": [
+      {
+        "habit": "Stories до 12:00",
+        "days_ago": 16,
+        "note": "Заморозка: важная съёмка"
+      },
+      {
+        "habit": "Прогулка 30 минут",
+        "days_ago": 9,
+        "note": "Заморозка: весь день в разъездах"
+      }
+    ],
+    "notes": [
+      "Получилось без спешки — записала идею в заметки.",
+      "День был плотный, сделала маленький шаг.",
+      "Вернулась после паузы. Главное — не идеально."
+    ]
+  },
+  "safety": {
+    "medical_advice": false,
+    "toxic_motivation": false,
+    "missed_days_are_neutral": true
+  }
+}
